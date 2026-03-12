@@ -10,6 +10,7 @@ A very simple WordPress plugin that searches through files in the specified `wp-
 - Adds files that are not already present in the Media Library.
 - Displays **live progress and logging output** while syncing.
 - Skips files that are already in the Media Library.
+- Skips various image sizes of the same image if they exist. Images that get added to the media library will generate the additional image sizes defined in WordPress settings, theme or plugin.
 
 ## Supported File Types
 
