@@ -3,7 +3,7 @@
 Plugin Name: Squatch Media Syncer
 Plugin URI: https://squatchcreative.com
 Description:Take the files in your wp-content/uploads folder and adds them to the media library 
-Version: 1.002
+Version: 1.009
 Author: Squatch Creative
 Author URI: https://squatchcreative.com
 */
@@ -37,7 +37,7 @@ function squatch_admin_footer_text($footer_text) {
 		?>
 		<span id="footer-thankyou">
 			<a href="https://squatchcreative.com" title="Built By Squatch Creative" target="_blank">
-				<img src="<?php echo esc_url($img_url); ?>" alt="Built By Squatch Creative" style="height:28px; vertical-align:middle;">
+				<img src="<?php echo esc_url($img_url); ?>" alt="Built By Squatch Creative">
 			</a>
 		</span>
 		<?php
@@ -55,16 +55,27 @@ add_action('admin_head', function() {
 	if($screen && $screen->id === 'tools_page_squatch-media-sync') {
 		?>
 		<style>
-		.squatch-plugin-header .left h1 {
-			margin: 0 0 8px 0;
+		.squatch-plugin-header {
+			display: flex;
+			gap: 18px;
+			align-items: center;
+			padding: 18px 0;
 		}
-		.squatch-plugin-header .left p {
-			margin: 0 0 16px 0;
-			color: #555;
+		.squatch-plugin-header img {
+			display: block;
+			margin: 0;
+			width: 54px;
+			height: 54px;
+			background: black;
+			border-radius: 50%;
+			padding: 2px;
 		}
-
+		.squatch-header-text * {
+			margin: 0 !important;
+			padding: 0 !important;
+		}
 		#media-sync-progress {
-			margin-top: 10px;
+			margin: 12px 0;
 			background: #eee;
 			border: 1px solid #ccc;
 			height: 20px;
@@ -79,20 +90,35 @@ add_action('admin_head', function() {
 			height: 100%;
 			transition: width 0.3s ease;
 		}
-
 		#media-sync-output {
-			margin-top: 20px;
-			max-height: 400px;
 			overflow: auto;
+			max-height: 400px;
+			background: #1d2327;
+			padding: 18px;
+			border-radius: 8px;
+			color: white;
 		}
-
+		#media-sync-output strong {
+			display:block;
+			color: #ffd747;
+		}
+		#media-sync-output strong:not(:first-of-type) {
+			margin-top:18px;
+		}
+		#media-sync-output span {
+			display:block;
+		}
 		#media-sync-summary {
-			padding: 20px 0 24px 0;
+			padding: 20px 0 48px 0;
 			font-size: 16px;
 			font-weight: bold;
 		}
 		#media-sync-form {
 			transition:180ms ease all;
+			position: relative;
+			display: inline-flex;
+			gap: 12px;
+			align-items: center;
 		}
 		#media-sync-form.processing {
 			opacity: 0.6;
@@ -100,6 +126,20 @@ add_action('admin_head', function() {
 		}
 		#media-sync-form.processing button {
 			cursor: not-allowed;
+		}
+		#media-sync-form.processing::after {
+			content: "\f463";
+			font-family: dashicons;
+			display: block;
+			font-size: 24px;
+			animation: mediaSyncSpin 1s linear infinite;
+		}
+		@keyframes mediaSyncSpin {
+			from { transform: rotate(0deg);	}
+			to { transform: rotate(360deg);	}
+		}
+		#footer-thankyou img {
+			height:28px;vertical-align:middle; 
 		}
 		</style>
 		<?php
@@ -111,9 +151,10 @@ add_action('admin_head', function() {
 function squatch_media_sync_page() {
 	$uploads_dir = WP_CONTENT_DIR . '/uploads';
 	$folders = array_filter(glob($uploads_dir . '/*'), 'is_dir');
+	$img_url = SQUATCH_PLUGIN_URL . 'assets/squatch-mark-yellow.svg'; 
 
 	echo '<div class="wrap">';
-	echo '<div class="squatch-plugin-header"><div class="left"><h1>Squatch Media Sync</h1><p>Select a top-level folder from your wp-content/uploads folder to sync with the media library. Be sure to make a backup first.</p></div></div>';
+	echo '<div class="squatch-plugin-header"><img src="' . esc_url($img_url). '" alt="Built By Squatch Creative"><div class="squatch-header-text"><h1>Squatch Media Sync</h1><p>Select a top-level folder from your wp-content/uploads folder to sync with the media library. Be sure to make a backup first. <a href="https://github.com/RCNeil/squatch-media-sync" target="_blank">View Details</a></p></div></div>';
 
 	echo '<form id="media-sync-form">';
 	echo '<select name="folder" id="sync-folder">';
@@ -135,50 +176,71 @@ function squatch_media_sync_page() {
 		$('#media-sync-form').on('submit', function(e){
 			e.preventDefault();
 			$(this).addClass('processing');
+
 			var folder = $('#sync-folder').val();
+			var offset = 0;
+
 			$('#media-sync-output').html('');
 			$('#media-sync-summary').html('');
 			$('#media-sync-progress-bar').css('width','0%');
 
-			// Step 1: Get list of subdirectories
 			$.post(ajaxurl, {
 				action: 'media_sync_get_subdirs',
 				folder: folder,
 				_nonce: '<?php echo wp_create_nonce('media_sync_nonce'); ?>'
 			}, function(response){
+
 				var data = JSON.parse(response);
 				var subdirs = data.subdirs;
-				var total = subdirs.length;
+				var totalSubdirs = subdirs.length;
+
 				var index = 0;
 				var added = 0;
 				var existing = 0;
 				var skipped = 0;
 
 				function processNext() {
-					if(index >= total) {
-						$('#media-sync-summary').html('Done! Added: ' + added + ', Already in library: ' + existing + ', Skipped: ' + skipped);
+
+					if(index >= totalSubdirs) {
+						$('#media-sync-summary').html(
+							'Done! Added: ' + added +
+							', Already in library: ' + existing +
+							', Skipped: ' + skipped
+						);
+
 						$('#media-sync-form').removeClass('processing');
 						return;
 					}
 					var sub = subdirs[index];
+
 					$.post(ajaxurl, {
 						action: 'media_sync_process_subdir',
 						folder: folder,
 						subdir: sub,
+						offset: offset,
 						_nonce: '<?php echo wp_create_nonce('media_sync_nonce'); ?>'
 					}, function(res){
 						var resData = JSON.parse(res);
+
 						added += resData.added;
 						existing += resData.existing;
 						skipped += resData.skipped;
 
 						$('#media-sync-output').append(resData.output);
-						index++;
-						$('#media-sync-progress-bar').css('width', ((index/total)*100) + '%');
-						processNext();
+						$('#media-sync-output').scrollTop($('#media-sync-output')[0].scrollHeight);
+						offset = resData.next_offset;
+
+						if(offset < resData.total) {
+							processNext(); // continue same subdir
+						} else {
+							offset = 0;
+							index++;
+							$('#media-sync-progress-bar').css('width',((index/totalSubdirs)*100) + '%');
+							processNext(); // next subdir
+						}
+
 					});
 				}
-
 				processNext();
 			});
 		});
@@ -187,35 +249,38 @@ function squatch_media_sync_page() {
 	<?php
 }
 
-// Step 1: Return list of subdirectories for batching
+// Step 1: Return list of subdirectories
 add_action('wp_ajax_media_sync_get_subdirs', function() {
 	check_ajax_referer('media_sync_nonce', '_nonce');
 	if(!current_user_can('manage_options')) wp_die('Permission denied');
 	if(empty($_POST['folder'])) wp_die('No folder selected');
-
 	$folder_name = sanitize_text_field($_POST['folder']);
 	$base_dir = WP_CONTENT_DIR . '/uploads/' . $folder_name;
-
 	if(!file_exists($base_dir)) wp_die('Folder not found');
-
-	$subdirs = array();
+	$subdirs = [];
 	foreach(glob($base_dir . '/*', GLOB_ONLYDIR) as $dir) {
 		$subdirs[] = basename($dir);
 	}
-	if(empty($subdirs)) $subdirs[] = ''; // no subdirs, process parent itself
-
+	if(empty($subdirs)) {
+		$subdirs[] = '';
+	}
 	echo json_encode(['subdirs' => $subdirs]);
 	wp_die();
 });
 
-// Step 2: Process one subdirectory at a time
+
+// Step 2: Process files in batches
 add_action('wp_ajax_media_sync_process_subdir', function() {
 	check_ajax_referer('media_sync_nonce', '_nonce');
 	if(!current_user_can('manage_options')) wp_die('Permission denied');
 	if(empty($_POST['folder'])) wp_die('No folder selected');
+	define('SQUATCH_MEDIA_SYNC_BATCH_SIZE', 50);  //HOW MANY FILES AT A TIME
 
 	$folder_name = sanitize_text_field($_POST['folder']);
 	$subdir_name = isset($_POST['subdir']) ? sanitize_text_field($_POST['subdir']) : '';
+
+	$offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+	$limit = SQUATCH_MEDIA_SYNC_BATCH_SIZE;
 
 	$base_dir = WP_CONTENT_DIR . '/uploads/' . $folder_name;
 	if($subdir_name) $base_dir .= '/' . $subdir_name;
@@ -230,41 +295,59 @@ add_action('wp_ajax_media_sync_process_subdir', function() {
 	$added = 0;
 	$existing = 0;
 	$skipped = 0;
-	
-	$display_subdir = $subdir_name ? $subdir_name : $folder_name;
-	$output .= '<br /><br /><strong>Processing folder: ' . esc_html($display_subdir) . '</strong>';
 
-	$all_files = new RecursiveIteratorIterator(
+	$files = [];
+
+	$iterator = new RecursiveIteratorIterator(
 		new RecursiveDirectoryIterator($base_dir),
 		RecursiveIteratorIterator::LEAVES_ONLY
 	);
 
-	foreach($all_files as $file) {
+	foreach($iterator as $file) {
 		if(!$file->isFile()) continue;
+		$files[] = $file->getRealPath();
+	}
 
-		$full_path = $file->getRealPath();
+	$total = count($files);
+	$batch = array_slice($files, $offset, $limit);
+
+	if($offset === 0) {
+		$display_subdir = $subdir_name ? $subdir_name : $folder_name;
+		$output .= '<strong>Processing folder: ' . esc_html($display_subdir) . '</strong>';
+	}
+
+	foreach($batch as $full_path) {
 		$filename = basename($full_path);
-
-		if(preg_match('/-\d+x\d+(?=\.[^.]+$)/', $filename)) { $skipped++; continue; }
-		if(strpos($filename, '-unsmushed') !== false) { $skipped++; continue; }
+		
+		//SKIP DUPLICATE IMAGE SIZES AND SMUSH WP IMAGES
+		if(preg_match('/-\d+x\d+(?=\.[^.]+$)/', $filename)) {
+			$skipped++;
+			continue;
+		}
+		if(strpos($filename, '-unsmushed') !== false) {
+			$skipped++;
+			continue;
+		}
 
 		$relative_path = str_replace(trailingslashit(WP_CONTENT_DIR . '/uploads'), '', $full_path);
 		$url = content_url('uploads/' . $relative_path);
-		$attachment_id = attachment_url_to_postid($url);
 
+		$attachment_id = attachment_url_to_postid($url);
 		if($attachment_id) {
-			$output .= '<br />Already in Media Library: ' . esc_html($relative_path) . ' (ID ' . $attachment_id . ')';
+			$output .= '<span>Already in Media Library: ' .
+				esc_html($relative_path) .
+				' (ID ' . $attachment_id . ')</span>';
 			$existing++;
 			continue;
 		}
 
 		$filetype = wp_check_filetype($filename, null);
 		$attachment = [
-			'guid'           => $url,
+			'guid' => $url,
 			'post_mime_type' => $filetype['type'],
-			'post_title'     => sanitize_file_name($filename),
-			'post_content'   => '',
-			'post_status'    => 'inherit'
+			'post_title' => sanitize_file_name($filename),
+			'post_content' => '',
+			'post_status' => 'inherit'
 		];
 
 		$attach_id = wp_insert_attachment($attachment, $full_path);
@@ -274,7 +357,7 @@ add_action('wp_ajax_media_sync_process_subdir', function() {
 			wp_update_attachment_metadata($attach_id, $attach_data);
 		}
 
-		$output .= '<br />Added: ' . esc_html($relative_path) . ' (ID ' . $attach_id . ')';
+		$output .= '<span>Added: ' . esc_html($relative_path) .	' (ID ' . $attach_id . ')</span>';
 		$added++;
 	}
 
@@ -282,7 +365,10 @@ add_action('wp_ajax_media_sync_process_subdir', function() {
 		'output' => $output,
 		'added' => $added,
 		'existing' => $existing,
-		'skipped' => $skipped
+		'skipped' => $skipped,
+		'next_offset' => $offset + $limit,
+		'total' => $total
 	]);
+
 	wp_die();
 });
