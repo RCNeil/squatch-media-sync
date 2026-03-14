@@ -27,6 +27,15 @@ add_action('admin_menu', function() {
 	);
 });
 
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'squatch_media_sync_settings_link');
+function squatch_media_sync_settings_link($links) {
+	$url = admin_url('tools.php?page=squatch-media-sync');
+	$settings_link = '<a href="' . esc_url($url) . '">Settings</a>';
+	array_unshift($links, $settings_link);
+	return $links;
+}
+
+
 function squatch_admin_footer_text($footer_text) {
 	$screen = get_current_screen();
 
